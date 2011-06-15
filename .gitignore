@@ -1,0 +1,5 @@
+build
+dist
+nbproject/nb.properties
+*.class
+testFiles/unzippedFile
