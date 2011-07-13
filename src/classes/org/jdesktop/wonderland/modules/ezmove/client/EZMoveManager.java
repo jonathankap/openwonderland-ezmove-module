@@ -4,14 +4,27 @@
  */
 package org.jdesktop.wonderland.modules.ezmove.client;
 
+import com.jme.math.Vector3f;
+import java.awt.Point;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Logger;
+import org.jdesktop.wonderland.client.cell.Cell;
+import org.jdesktop.wonderland.client.cell.MovableComponent;
 import org.jdesktop.wonderland.client.input.Event;
 import org.jdesktop.wonderland.client.input.EventClassListener;
 import org.jdesktop.wonderland.client.input.InputManager;
 import org.jdesktop.wonderland.client.jme.input.KeyEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseButtonEvent3D;
+import org.jdesktop.wonderland.client.jme.input.MouseDraggedEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseEvent3D;
+import org.jdesktop.wonderland.common.cell.CellID;
+import org.jdesktop.wonderland.common.cell.CellTransform;
+import org.jdesktop.wonderland.common.cell.messages.CellServerComponentMessage;
+import org.jdesktop.wonderland.common.messages.ErrorMessage;
+import org.jdesktop.wonderland.common.messages.ResponseMessage;
 
 /**
  *
@@ -30,6 +43,8 @@ public enum EZMoveManager {
     private final CellSelectionManager selected = new CellSelectionManager();
 
     private boolean moveMode = false;
+    private Vector3f lastDrag;
+    private List<Cell> selectedCells;
 
     public static EZMoveManager getInstance() {
         return INSTANCE;
@@ -63,7 +78,77 @@ public enum EZMoveManager {
         return moveMode;
     }
 
+    protected void handleDrag(Vector3f start, Vector3f end) {
+        
+        
+        LOGGER.warning("Handling drag, start: "+start+""
+                + "\nlast: "+ lastDrag +""
+                + "\nend: "+end);
+        Vector3f delta = end.subtract(lastDrag);
+        for(Cell cell: selectedCells) {
+            CellTransform transform = cell.getLocalTransform();
+            Vector3f translate = transform.getTranslation(null);
+            translate.addLocal(delta);
+            transform.setTranslation(translate);
+            getMovable(cell).localMoveRequest(transform);
+            
+        }
+        lastDrag = end;
+
+    }
+    
+        /**
+     * Adds the movable component, assumes it does not already exist.
+     */
+    private void addMovableComponent(Cell cell) {
+        
+        // Go ahead and try to add the affordance. If we cannot, then log an
+        // error and return.
+        CellID cellID = cell.getCellID();
+        String className = "org.jdesktop.wonderland.server.cell.MovableComponentMO";
+        CellServerComponentMessage cscm =
+                CellServerComponentMessage.newAddMessage(cellID, className);
+        ResponseMessage response = cell.sendCellMessageAndWait(cscm);
+        if (response instanceof ErrorMessage) {
+            LOGGER.warning("Unable to add movable component for Cell"
+                    + cell.getName() + " with ID " + cell.getCellID());
+        }
+
+}
+
+    protected MovableComponent getMovable(Cell cell) {
+       MovableComponent mc = cell.getComponent(MovableComponent.class);
+        if(mc != null) {
+           return mc;
+       } else {
+           addMovableComponent(cell);
+           return cell.getComponent(MovableComponent.class);
+       }
+    }
+
+    protected void startDrag(Vector3f start) {
+        selectedCells = new ArrayList<Cell>();
+        
+        for(Cell cell: selected.getSelectedCells()) {
+            MovableComponent mc = getMovable(cell);
+            if(mc != null) {
+                selectedCells.add(cell);
+            }
+        }
+        //TODO: if a parent and children are both in the list, remove any children.
+
+        lastDrag = start;
+        LOGGER.warning("Starting drag: "+start);
+    }
+
+    protected void endDrag() {
+        LOGGER.warning("Drag ended");
+        lastDrag = null;
+        selectedCells = null;
+    }
     class EZMoveMoveListener extends EventClassListener {
+        private Point startDragMouse;
+        private Vector3f startDragWorld;
         @Override
         public Class[] eventClassesToConsume() {
             return new Class[] { KeyEvent3D.class, MouseEvent3D.class };
@@ -73,10 +158,28 @@ public enum EZMoveManager {
         public void commitEvent(Event event) {
             if (event instanceof MouseButtonEvent3D) {
                 MouseButtonEvent3D me = ((MouseButtonEvent3D) event);
-                
+
+                if(me.isPressed()) {
+                MouseEvent awtMouseEvent = (MouseEvent)me.getAwtEvent();
+                    startDragMouse = awtMouseEvent.getPoint();
+                    startDragWorld = me.getIntersectionPointWorld();
+                    startDrag(startDragWorld);
+                } else if(me.isReleased()) {
+                    endDrag();
+                }
+            } else if (event instanceof MouseDraggedEvent3D) {
+                MouseDraggedEvent3D dragEvent = (MouseDraggedEvent3D)event;
+                Vector3f endDragWorld = dragEvent.getDragVectorWorld(startDragWorld, startDragMouse, null);
+
+                handleDrag(startDragWorld, endDragWorld);
+
+
+
             }
         }
     }
+
+
 
     class EZMoveEnableListener extends EventClassListener {
 
