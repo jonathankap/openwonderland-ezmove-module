@@ -78,24 +78,6 @@ public enum EZMoveManager {
         return moveMode;
     }
 
-    protected void handleDrag(Vector3f start, Vector3f end) {
-        
-        
-        LOGGER.warning("Handling drag, start: "+start+""
-                + "\nlast: "+ lastDrag +""
-                + "\nend: "+end);
-        Vector3f delta = end.subtract(lastDrag);
-        for(Cell cell: selectedCells) {
-            CellTransform transform = cell.getLocalTransform();
-            Vector3f translate = transform.getTranslation(null);
-            translate.addLocal(delta);
-            transform.setTranslation(translate);
-            getMovable(cell).localMoveRequest(transform);
-            
-        }
-        lastDrag = end;
-
-    }
     
         /**
      * Adds the movable component, assumes it does not already exist.
@@ -137,8 +119,23 @@ public enum EZMoveManager {
         }
         //TODO: if a parent and children are both in the list, remove any children.
 
-        lastDrag = start;
+        lastDrag = Vector3f.ZERO;
         LOGGER.warning("Starting drag: "+start);
+    }
+    protected void handleDrag(Vector3f start, Vector3f end) {
+        LOGGER.warning("Handling drag, start: "+start+""
+                + "\nlast: "+ lastDrag +""
+                + "\nend: "+end);
+        Vector3f delta = end.subtract(lastDrag);
+        for(Cell cell: selectedCells) {
+            CellTransform transform = cell.getLocalTransform();
+            Vector3f translate = transform.getTranslation(null);
+            translate.addLocal(delta);
+            transform.setTranslation(translate);
+            getMovable(cell).localMoveRequest(transform);
+
+        }
+        lastDrag = end;
     }
 
     protected void endDrag() {
