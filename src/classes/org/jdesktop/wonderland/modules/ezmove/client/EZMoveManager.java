@@ -4,6 +4,7 @@
  */
 package org.jdesktop.wonderland.modules.ezmove.client;
 
+import com.jme.math.Quaternion;
 import com.jme.math.Vector3f;
 import java.awt.Point;
 import java.awt.event.KeyEvent;
@@ -16,10 +17,12 @@ import org.jdesktop.wonderland.client.cell.MovableComponent;
 import org.jdesktop.wonderland.client.input.Event;
 import org.jdesktop.wonderland.client.input.EventClassListener;
 import org.jdesktop.wonderland.client.input.InputManager;
+import org.jdesktop.wonderland.client.jme.ClientContextJME;
 import org.jdesktop.wonderland.client.jme.input.KeyEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseButtonEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseDraggedEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseEvent3D;
+import org.jdesktop.wonderland.client.jme.input.MouseWheelEvent3D;
 import org.jdesktop.wonderland.common.cell.CellID;
 import org.jdesktop.wonderland.common.cell.CellTransform;
 import org.jdesktop.wonderland.common.cell.messages.CellServerComponentMessage;
@@ -127,6 +130,11 @@ public enum EZMoveManager {
                 + "\nlast: "+ lastDrag +""
                 + "\nend: "+end);
         Vector3f delta = end.subtract(lastDrag);
+        applyDelta(delta);
+    }
+
+    protected void applyDelta(Vector3f delta) {
+        LOGGER.warning("Applying delta: "+delta);
         for(Cell cell: selectedCells) {
             CellTransform transform = cell.getLocalTransform();
             Vector3f translate = transform.getTranslation(null);
@@ -135,7 +143,7 @@ public enum EZMoveManager {
             getMovable(cell).localMoveRequest(transform);
 
         }
-        lastDrag = end;
+        lastDrag.addLocal(delta);
     }
 
     protected void endDrag() {
@@ -172,6 +180,18 @@ public enum EZMoveManager {
 
 
 
+            }else if (event instanceof MouseWheelEvent3D) {
+                MouseWheelEvent3D wheelEvent = (MouseWheelEvent3D)event;
+                int clicks = wheelEvent.getWheelRotation();
+                //create vector based on unit z and scaled clicks from wheel event.
+                Vector3f delta = new Vector3f(0, 0, clicks*-0.2f);
+                //grab the current camera's rotation.
+                Quaternion rotation = ClientContextJME.getViewManager().getCameraTransform().getRotation(null);
+                //apply the rotation to our initial vector
+                delta = rotation.mult(delta);
+
+                //apply the delta to any and all selected cells
+                applyDelta(delta);
             }
         }
     }
