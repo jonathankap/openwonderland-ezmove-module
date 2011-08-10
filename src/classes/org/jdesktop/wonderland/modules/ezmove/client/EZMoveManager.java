@@ -111,7 +111,7 @@ public enum EZMoveManager {
        }
     }
 
-    protected void startDrag(Vector3f start) {
+    protected void startDrag() {
         selectedCells = new ArrayList<Cell>();
         
         for(Cell cell: selected.getSelectedCells()) {
@@ -122,8 +122,8 @@ public enum EZMoveManager {
         }
         //TODO: if a parent and children are both in the list, remove any children.
 
-        lastDrag = Vector3f.ZERO;
-        LOGGER.warning("Starting drag: "+start);
+        lastDrag = new Vector3f(Vector3f.ZERO);
+        LOGGER.warning("Starting drag");
     }
     protected void handleDrag(Vector3f start, Vector3f end) {
         LOGGER.warning("Handling drag, start: "+start+""
@@ -135,6 +135,15 @@ public enum EZMoveManager {
 
     protected void applyDelta(Vector3f delta) {
         LOGGER.warning("Applying delta: "+delta);
+
+        boolean startedDrag = false;
+        if (selectedCells == null) {
+            // no drag in progress. Start one now and end it after the drag
+            // operation
+            startDrag();
+            startedDrag = true;
+        }
+
         for(Cell cell: selectedCells) {
             CellTransform transform = cell.getLocalTransform();
             Vector3f translate = transform.getTranslation(null);
@@ -144,6 +153,11 @@ public enum EZMoveManager {
 
         }
         lastDrag.addLocal(delta);
+
+        // if we started a drag, remember to end it
+        if (startedDrag) {
+            endDrag();
+        }
     }
 
     protected void endDrag() {
@@ -168,7 +182,7 @@ public enum EZMoveManager {
                 MouseEvent awtMouseEvent = (MouseEvent)me.getAwtEvent();
                     startDragMouse = awtMouseEvent.getPoint();
                     startDragWorld = me.getIntersectionPointWorld();
-                    startDrag(startDragWorld);
+                    startDrag();
                 } else if(me.isReleased()) {
                     endDrag();
                 }
@@ -177,9 +191,6 @@ public enum EZMoveManager {
                 Vector3f endDragWorld = dragEvent.getDragVectorWorld(startDragWorld, startDragMouse, null);
 
                 handleDrag(startDragWorld, endDragWorld);
-
-
-
             }else if (event instanceof MouseWheelEvent3D) {
                 MouseWheelEvent3D wheelEvent = (MouseWheelEvent3D)event;
                 int clicks = wheelEvent.getWheelRotation();
