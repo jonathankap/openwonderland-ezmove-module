@@ -4,6 +4,7 @@
  */
 package org.jdesktop.wonderland.modules.ezmove.client;
 
+import com.jme.math.FastMath;
 import com.jme.math.Quaternion;
 import com.jme.math.Vector3f;
 import java.awt.Point;
@@ -38,7 +39,9 @@ public enum EZMoveManager {
 
     private static final Logger LOGGER =
             Logger.getLogger(EZMoveManager.class.getName());
-
+    
+    //used for incrementing movement for keystrokes and mouse events.
+    private static final float MOVE_INCREMENT = 0.2f;
     private final EZMoveEnableListener enableListener =
             new EZMoveEnableListener();
     private final EZMoveMoveListener moveListener =
@@ -46,7 +49,8 @@ public enum EZMoveManager {
     private final CellSelectionManager selected = new CellSelectionManager();
 
     private boolean moveMode = false;
-    private Vector3f lastDrag;
+    private Vector3f lastTranslation;
+    private Quaternion lastRotation;
     private List<Cell> selectedCells;
 
     public static EZMoveManager getInstance() {
@@ -122,19 +126,36 @@ public enum EZMoveManager {
         }
         //TODO: if a parent and children are both in the list, remove any children.
 
-        lastDrag = new Vector3f(Vector3f.ZERO);
+        lastTranslation = new Vector3f(Vector3f.ZERO);
+        lastRotation = new Quaternion();
         LOGGER.warning("Starting drag");
     }
-    protected void handleDrag(Vector3f start, Vector3f end) {
-        LOGGER.warning("Handling drag, start: "+start+""
-                + "\nlast: "+ lastDrag +""
+    protected void handleMove(Vector3f start, Vector3f end) {
+        LOGGER.warning("Handling move, start: "+start+""
+                + "\nlast: "+ lastTranslation +""
                 + "\nend: "+end);
-        Vector3f delta = end.subtract(lastDrag);
-        applyDelta(delta);
+        Vector3f delta = end.subtract(lastTranslation);
+        applyDelta(delta, new Quaternion());
     }
 
-    protected void applyDelta(Vector3f delta) {
-        LOGGER.warning("Applying delta: "+delta);
+    protected void handleRotate(Vector3f start, Vector3f end) {
+        LOGGER.warning("Handling rotate, start: "+start+""
+                + "\nlast: "+lastTranslation+""
+                + "\nend: "+end);
+        Vector3f increment = end.subtract(lastTranslation);
+        increment.y = 0;
+        float length = increment.length();
+        float magic = 3f; // ~ 180 degrees
+        float percent = length/magic;
+
+        Quaternion rotation = new Quaternion();
+        rotation.fromAngles(0f, percent*FastMath.PI, 0f);
+        
+        applyDelta(Vector3f.ZERO, rotation);
+    }
+
+    protected void applyDelta(Vector3f deltaTranslation, Quaternion deltaRotation) {
+        LOGGER.warning("Applying delta: "+deltaTranslation);
 
         boolean startedDrag = false;
         if (selectedCells == null) {
@@ -147,13 +168,16 @@ public enum EZMoveManager {
         for(Cell cell: selectedCells) {
             CellTransform transform = cell.getLocalTransform();
             Vector3f translate = transform.getTranslation(null);
-            translate.addLocal(delta);
+            Quaternion rotation = transform.getRotation(null);
+            translate.addLocal(deltaTranslation);
+            rotation.multLocal(deltaRotation);
             transform.setTranslation(translate);
+            transform.setRotation(rotation);
             getMovable(cell).localMoveRequest(transform);
 
         }
-        lastDrag.addLocal(delta);
-
+        lastTranslation.addLocal(deltaTranslation);
+        lastRotation.multLocal(deltaRotation);
         // if we started a drag, remember to end it
         if (startedDrag) {
             endDrag();
@@ -162,7 +186,8 @@ public enum EZMoveManager {
 
     protected void endDrag() {
         LOGGER.warning("Drag ended");
-        lastDrag = null;
+        lastTranslation = null;
+        lastRotation = null;
         selectedCells = null;
     }
     class EZMoveMoveListener extends EventClassListener {
@@ -187,23 +212,51 @@ public enum EZMoveManager {
                     endDrag();
                 }
             } else if (event instanceof MouseDraggedEvent3D) {
+
                 MouseDraggedEvent3D dragEvent = (MouseDraggedEvent3D)event;
                 Vector3f endDragWorld = dragEvent.getDragVectorWorld(startDragWorld, startDragMouse, null);
-
-                handleDrag(startDragWorld, endDragWorld);
+                if(dragEvent.getButton() == MouseEvent3D.ButtonId.BUTTON1){
+                    handleMove(startDragWorld, endDragWorld);
+                } else if(dragEvent.getButton() == MouseEvent3D.ButtonId.BUTTON3) {
+                    handleRotate(startDragWorld, endDragWorld);
+                }
             }else if (event instanceof MouseWheelEvent3D) {
                 MouseWheelEvent3D wheelEvent = (MouseWheelEvent3D)event;
                 int clicks = wheelEvent.getWheelRotation();
+                
                 //create vector based on unit z and scaled clicks from wheel event.
-                Vector3f delta = new Vector3f(0, 0, clicks*-0.2f);
+                Vector3f delta = new Vector3f(0, 0, clicks*-MOVE_INCREMENT);
+                moveObject(delta);
                 //grab the current camera's rotation.
-                Quaternion rotation = ClientContextJME.getViewManager().getCameraTransform().getRotation(null);
+//                Quaternion rotation = ClientContextJME.getViewManager().getCameraTransform().getRotation(null);
                 //apply the rotation to our initial vector
-                delta = rotation.mult(delta);
+//                delta = rotation.mult(delta);
 
                 //apply the delta to any and all selected cells
-                applyDelta(delta);
+//                applyDelta(delta, new Quaternion());
+            } else if (event instanceof KeyEvent3D) {
+                KeyEvent3D keyEvent = (KeyEvent3D)event;
+                if(keyEvent.getKeyCode() == KeyEvent.VK_MINUS) {
+                    //move object toward the screen
+                    moveObject(new Vector3f(0, 0, -MOVE_INCREMENT));
+                } else if(keyEvent.getKeyCode() == KeyEvent.VK_PLUS) {
+                    //move object away from screen
+                    moveObject(new Vector3f(0, 0, MOVE_INCREMENT));
+                } else if(keyEvent.getKeyCode() == KeyEvent.VK_UP) {
+                    //move object toward the sky.
+                    moveObject(new Vector3f(0, MOVE_INCREMENT, 0));
+                } else if (keyEvent.getKeyCode() == KeyEvent.VK_DOWN) {
+                    //move object away from the sky
+                    moveObject(new Vector3f(0, -MOVE_INCREMENT, 0));
+                }
             }
+        }
+
+        private void moveObject(Vector3f delta) {
+//            Vector3f delta = new Vector3f(0, 0, -0.2f);
+            Quaternion rotation = ClientContextJME.getViewManager().getCameraTransform().getRotation(null);
+            delta = rotation.mult(delta);
+            applyDelta(delta, new Quaternion());
         }
     }
 
