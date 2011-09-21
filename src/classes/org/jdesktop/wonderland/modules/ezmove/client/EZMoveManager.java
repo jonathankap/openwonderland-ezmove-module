@@ -13,6 +13,7 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
+import javax.swing.SwingUtilities;
 import org.jdesktop.wonderland.client.cell.Cell;
 import org.jdesktop.wonderland.client.cell.MovableComponent;
 import org.jdesktop.wonderland.client.input.Event;
@@ -41,7 +42,8 @@ public enum EZMoveManager {
             Logger.getLogger(EZMoveManager.class.getName());
     
     //used for incrementing movement for keystrokes and mouse events.
-    private static final float MOVE_INCREMENT = 0.2f;
+    private static final float MOVE_INCREMENT = 0.05f;
+    private static final float ZOOM_INCREMENT = 0.20f;
     private final EZMoveEnableListener enableListener =
             new EZMoveEnableListener();
     private final EZMoveMoveListener moveListener =
@@ -70,7 +72,12 @@ public enum EZMoveManager {
         moveMode = true;
 
         selected.register();
-        InputManager.inputManager().addGlobalEventListener(moveListener);
+        
+        InputManager inputManager = InputManager.inputManager();
+        inputManager.addGlobalEventListener(moveListener);
+
+        // disable events to our avatar
+        inputManager.removeKeyMouseFocus(inputManager.getGlobalFocusEntity());
     }
 
     protected synchronized void exitMoveMode() {
@@ -78,7 +85,12 @@ public enum EZMoveManager {
         moveMode = false;
 
         selected.unregister();
-        InputManager.inputManager().removeGlobalEventListener(moveListener);
+
+        InputManager inputManager = InputManager.inputManager();
+        inputManager.removeGlobalEventListener(moveListener);
+
+        // enable events to our avatar
+        inputManager.addKeyMouseFocus(inputManager.getGlobalFocusEntity());
     }
 
     protected synchronized boolean isInMoveMode() {
@@ -200,6 +212,8 @@ public enum EZMoveManager {
 
         @Override
         public void commitEvent(Event event) {
+            LOGGER.warning("Received event: "+event.toString());
+
             if (event instanceof MouseButtonEvent3D) {
                 MouseButtonEvent3D me = ((MouseButtonEvent3D) event);
 
@@ -214,10 +228,11 @@ public enum EZMoveManager {
             } else if (event instanceof MouseDraggedEvent3D) {
 
                 MouseDraggedEvent3D dragEvent = (MouseDraggedEvent3D)event;
+                MouseEvent awtMouseEvent = (MouseEvent) dragEvent.getAwtEvent();
                 Vector3f endDragWorld = dragEvent.getDragVectorWorld(startDragWorld, startDragMouse, null);
-                if(dragEvent.getButton() == MouseEvent3D.ButtonId.BUTTON1){
+                if(SwingUtilities.isLeftMouseButton(awtMouseEvent)){
                     handleMove(startDragWorld, endDragWorld);
-                } else if(dragEvent.getButton() == MouseEvent3D.ButtonId.BUTTON3) {
+                } else if(SwingUtilities.isRightMouseButton(awtMouseEvent)) {
                     handleRotate(startDragWorld, endDragWorld);
                 }
             }else if (event instanceof MouseWheelEvent3D) {
@@ -236,18 +251,26 @@ public enum EZMoveManager {
 //                applyDelta(delta, new Quaternion());
             } else if (event instanceof KeyEvent3D) {
                 KeyEvent3D keyEvent = (KeyEvent3D)event;
-                if(keyEvent.getKeyCode() == KeyEvent.VK_MINUS) {
-                    //move object toward the screen
-                    moveObject(new Vector3f(0, 0, -MOVE_INCREMENT));
-                } else if(keyEvent.getKeyCode() == KeyEvent.VK_PLUS) {
-                    //move object away from screen
-                    moveObject(new Vector3f(0, 0, MOVE_INCREMENT));
-                } else if(keyEvent.getKeyCode() == KeyEvent.VK_UP) {
-                    //move object toward the sky.
-                    moveObject(new Vector3f(0, MOVE_INCREMENT, 0));
-                } else if (keyEvent.getKeyCode() == KeyEvent.VK_DOWN) {
-                    //move object away from the sky
-                    moveObject(new Vector3f(0, -MOVE_INCREMENT, 0));
+                switch(keyEvent.getKeyCode()) {
+                    case KeyEvent.VK_MINUS:
+                        moveObject(new Vector3f(0, 0, -ZOOM_INCREMENT));
+                        break;
+                    case KeyEvent.VK_PLUS:
+                    case KeyEvent.VK_EQUALS:
+                        moveObject(new Vector3f(0, 0, ZOOM_INCREMENT));
+                        break;
+                    case KeyEvent.VK_UP:
+                        moveObject(new Vector3f(0,MOVE_INCREMENT,0));
+                        break;
+                    case KeyEvent.VK_DOWN:
+                        moveObject(new Vector3f(0, -MOVE_INCREMENT, 0));
+                        break;
+                    case KeyEvent.VK_LEFT:
+                        moveObject(new Vector3f(MOVE_INCREMENT,0,0));
+                        break;
+                    case KeyEvent.VK_RIGHT:
+                        moveObject(new Vector3f(-MOVE_INCREMENT, 0, 0));
+                        break;
                 }
             }
         }

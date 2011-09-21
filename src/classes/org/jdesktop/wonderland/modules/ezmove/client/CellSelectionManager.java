@@ -20,9 +20,11 @@ import org.jdesktop.wonderland.client.cell.Cell;
 import org.jdesktop.wonderland.client.cell.MovableComponent;
 import org.jdesktop.wonderland.client.input.Event;
 import org.jdesktop.wonderland.client.input.EventClassListener;
+import org.jdesktop.wonderland.client.input.InputManager;
 import org.jdesktop.wonderland.client.jme.ClientContextJME;
 import org.jdesktop.wonderland.client.jme.SceneWorker;
 import org.jdesktop.wonderland.client.jme.cellrenderer.CellRendererJME;
+import org.jdesktop.wonderland.client.jme.input.MouseEvent3D;
 import org.jdesktop.wonderland.client.jme.utils.traverser.ProcessNodeInterface;
 import org.jdesktop.wonderland.client.jme.utils.traverser.TreeScan;
 import org.jdesktop.wonderland.client.scenemanager.SceneManager;
@@ -44,25 +46,37 @@ public class CellSelectionManager extends EventClassListener {
     private static final ColorRGBA GLOW_COLOR = new ColorRGBA(1.0f, 0, 0, 0.5f);
     private static final Vector3f GLOW_SCALE = new Vector3f(1.1f, 1.1f, 1.1f);
 
+    private final SelectionMouseListener mouseListener = new SelectionMouseListener();
+    private EZMoveSceneManager sceneManager;
+
     public void register() {
-        SceneManager.getSceneManager().addSceneListener(this);
+        if (sceneManager != null) {
+            throw new IllegalStateException("Scene manager already exists");
+        }
+
+        sceneManager = new EZMoveSceneManager();
+        sceneManager.addSceneListener(this);
+
+        InputManager.inputManager().addGlobalEventListener(mouseListener);
     }
 
     public void unregister() {
-        SceneManager.getSceneManager().removeSceneListener(this);
+        InputManager.inputManager().removeGlobalEventListener(mouseListener);
 
-        // clear selection on the commit thread, so we don't have to worry
-        // about synchronization
-        SceneWorker.addWorker(new WorkCommit() {
-            public void commit() {
-                SceneManager.getSceneManager().clearSelection();
-                
-                // we won't get the message about clearing the selection,
-                // so make sure to manually remove all selection we have
-                // made
-                deselectAll();
-            }
-        });
+        if (sceneManager == null) {
+            return;
+        }
+
+        sceneManager.removeSceneListener(this);
+
+        // cleanup will clear the selection
+        sceneManager.cleanup();
+        sceneManager = null;
+
+        // we won't get the message about clearing the selection,
+        // so make sure to manually remove all selection we have
+        // made
+        deselectAll();
     }
 
     public synchronized boolean areCellsSelected() {
@@ -81,11 +95,12 @@ public class CellSelectionManager extends EventClassListener {
 
     @Override
     public void commitEvent(Event event) {
+        LOGGER.warning("Received event in CellSelectionManager: "+event.toString());
         Set<Cell> addList = new LinkedHashSet<Cell>();
         Set<Cell> removeList = getSelectedCells();
 
         // sync up our view of selected entities with the scene manager's
-        for (Entity e : SceneManager.getSceneManager().getSelectedEntities()) {
+        for (Entity e : sceneManager.getSelectedEntities()) {
             Cell cell = SceneManager.getCellForEntity(e);
             if (cell != null) {
                 addList.add(cell);
@@ -200,5 +215,34 @@ public class CellSelectionManager extends EventClassListener {
                 return true;
             }
         }, false, false);
+    }
+
+    /**
+     * Extension of SceneManager to handle selection even when the global
+     * entity is not selected
+     */
+    class EZMoveSceneManager extends SceneManager {
+        @Override
+        public void inputEvent(Event event) {
+            super.inputEvent(event);
+        }
+    }
+
+    /**
+     * Mouse listener that feeds events to the scene manager
+     */
+    class SelectionMouseListener extends EventClassListener {
+
+        @Override
+        public Class[] eventClassesToConsume() {
+            return new Class[] { MouseEvent3D.class };
+        }
+
+        @Override
+        public void commitEvent(Event event) {
+            if (sceneManager != null) {
+                sceneManager.inputEvent(event);
+            }
+        }
     }
 }
