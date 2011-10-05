@@ -160,14 +160,37 @@ public enum EZMoveManager {
         float magic = 3f; // ~ 180 degrees
         float percent = length/magic;
 
+        // if the difference is negative, we need to rotate in the opposite
+        // direction
+        if (increment.x < 0 || increment.z < 0) {
+            percent = -percent;
+        }
+
         Quaternion rotation = new Quaternion();
         rotation.fromAngles(0f, percent*FastMath.PI, 0f);
-        
-        applyDelta(Vector3f.ZERO, rotation);
+      
+        // rotation is the total rotation since we started moving the mouse,
+        // so calculate just the delta to apply
+        Quaternion deltaRotation = rotation.mult(lastRotation.inverse());
+
+        LOGGER.warning("Percent: " + percent + " = "  +
+                       toAnglesString(rotation) + ". Last = " +
+                       toAnglesString(lastRotation) + ". Delta = " +
+                       toAnglesString(deltaRotation));
+
+        applyDelta(Vector3f.ZERO, deltaRotation);
     }
 
+    private static String toAnglesString(Quaternion q) {
+        float[] angles = q.toAngles(null);
+        return "(X: " + (FastMath.RAD_TO_DEG * angles[0]) + ", " +
+               "Y: " + (FastMath.RAD_TO_DEG * angles[1]) + ", " +
+               "Z: " + (FastMath.RAD_TO_DEG * angles[2]) + ")";
+    }
+
+
     protected void applyDelta(Vector3f deltaTranslation, Quaternion deltaRotation) {
-        LOGGER.warning("Applying delta: "+deltaTranslation);
+        LOGGER.warning("Applying delta: "+deltaTranslation + " " + deltaRotation);
 
         boolean startedDrag = false;
         if (selectedCells == null) {
