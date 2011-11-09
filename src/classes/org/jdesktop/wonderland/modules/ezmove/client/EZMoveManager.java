@@ -20,6 +20,7 @@ import org.jdesktop.wonderland.client.input.Event;
 import org.jdesktop.wonderland.client.input.EventClassListener;
 import org.jdesktop.wonderland.client.input.InputManager;
 import org.jdesktop.wonderland.client.jme.ClientContextJME;
+import org.jdesktop.wonderland.client.jme.ViewManager;
 import org.jdesktop.wonderland.client.jme.input.KeyEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseButtonEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseDraggedEvent3D;
@@ -150,7 +151,7 @@ public enum EZMoveManager {
         applyDelta(delta, new Quaternion());
     }
 
-    protected void handleRotate(Vector3f start, Vector3f end) {
+    protected void handleRotate(Vector3f start, Vector3f end, float direction) {
         LOGGER.warning("Handling rotate, start: "+start+""
                 + "\nlast: "+lastTranslation+""
                 + "\nend: "+end);
@@ -161,10 +162,21 @@ public enum EZMoveManager {
         float percent = length/magic;
 
         // if the difference is negative, we need to rotate in the opposite
-        // direction
-        if (increment.x < 0 || increment.z < 0) {
-            percent = -percent;
-        }
+        // direction. Caclulate the difference after taking into account 
+        // the direction of the camera
+//        CellTransform viewTransform = ViewManager.getViewManager().getCameraTransform();
+//        Quaternion viewRotation = viewTransform.getRotation(null);
+//        increment = viewRotation.mult(increment);
+//
+//        LOGGER.warning("viewTransform: " + viewTransform + ", increment: " +
+//                       increment);
+//
+//        if (increment.x < 0 || increment.z < 0) {
+//            percent = -percent;
+//        }
+
+        // take direction into account
+        percent *= direction;
 
         Quaternion rotation = new Quaternion();
         rotation.fromAngles(0f, percent*FastMath.PI, 0f);
@@ -204,7 +216,27 @@ public enum EZMoveManager {
             CellTransform transform = cell.getLocalTransform();
             Vector3f translate = transform.getTranslation(null);
             Quaternion rotation = transform.getRotation(null);
-            translate.addLocal(deltaTranslation);
+            
+            // if the cell has a parent, make sure to take the parent's
+            // rotation and scale into account when applying the delta
+            Vector3f localDeltaTranslation = deltaTranslation.clone();
+            Cell parent = cell.getParent();
+            if (parent != null) {
+                CellTransform parentWorld = parent.getWorldTransform();
+                Quaternion parentRotation = parentWorld.getRotation(null);
+                float parentScale = parentWorld.getScaling();
+
+                LOGGER.warning("Parent transform: " + parentWorld);
+
+                // invert the rotation to get the child rotation
+                parentRotation.inverseLocal();
+                localDeltaTranslation = parentRotation.mult(deltaTranslation);
+                localDeltaTranslation.multLocal(parentScale);
+
+                LOGGER.warning("Local delta translation: " + localDeltaTranslation);
+            }
+            
+            translate.addLocal(localDeltaTranslation);
             rotation.multLocal(deltaRotation);
             transform.setTranslation(translate);
             transform.setRotation(rotation);
@@ -256,7 +288,12 @@ public enum EZMoveManager {
                 if(SwingUtilities.isLeftMouseButton(awtMouseEvent)){
                     handleMove(startDragWorld, endDragWorld);
                 } else if(SwingUtilities.isRightMouseButton(awtMouseEvent)) {
-                    handleRotate(startDragWorld, endDragWorld);
+                    float direction = 1f;
+                    if (awtMouseEvent.getX() < startDragMouse.getX()) {
+                        direction = -1f;
+                    }
+
+                    handleRotate(startDragWorld, endDragWorld, direction);
                 }
             }else if (event instanceof MouseWheelEvent3D) {
                 MouseWheelEvent3D wheelEvent = (MouseWheelEvent3D)event;
