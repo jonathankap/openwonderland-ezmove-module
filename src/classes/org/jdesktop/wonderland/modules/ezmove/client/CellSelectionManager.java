@@ -11,6 +11,7 @@ import com.jme.scene.Geometry;
 import com.jme.scene.Spatial;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jdesktop.mtgame.Entity;
 import org.jdesktop.mtgame.RenderComponent;
@@ -43,6 +44,8 @@ public class CellSelectionManager extends EventClassListener {
             Logger.getLogger(CellSelectionManager.class.getName());
 
     private final Set<Cell> selected = new LinkedHashSet<Cell>();
+    private Set<Cell> filtered = new LinkedHashSet<Cell>();
+
     private static final ColorRGBA GLOW_COLOR = new ColorRGBA(1.0f, 0, 0, 0.5f);
     private static final Vector3f GLOW_SCALE = new Vector3f(1.1f, 1.1f, 1.1f);
 
@@ -85,7 +88,7 @@ public class CellSelectionManager extends EventClassListener {
 
     public synchronized Set<Cell> getSelectedCells() {
         // return a copy
-        return new LinkedHashSet<Cell>(selected);
+        return new LinkedHashSet<Cell>(filtered);
     }
 
     @Override
@@ -131,6 +134,8 @@ public class CellSelectionManager extends EventClassListener {
     // must be called on the commit thread while holding the lock on
     // this class
     private void select(Cell cell) {
+        LOGGER.log(Level.WARNING, "Cell " + cell.getCellID() + " selected");
+
         // do something to show selection
         highlightCell(cell, true, GLOW_COLOR);
 
@@ -139,15 +144,46 @@ public class CellSelectionManager extends EventClassListener {
         checkMovableComponent(cell);
 
         selected.add(cell);
+        filtered = filterSelection();
     }
 
     // must be called on the commit thread while holding the lock on
     // this class
     private void deselect(Cell cell) {
-        selected.remove(cell);
+        LOGGER.log(Level.WARNING, "Cell " + cell.getCellID() + " deselected");
 
+        selected.remove(cell);
+        filtered = filterSelection();
+        
         // undo whatever we were doing to show selection
         highlightCell(cell, false, GLOW_COLOR);
+    }
+
+    // remove cells whose parents are on the selected list
+    private Set<Cell> filterSelection() {
+        Set<Cell> out = new LinkedHashSet<Cell>();
+
+        for (Cell cell : selected) {
+            boolean add = true;
+            Cell parent = cell.getParent();
+
+            while (parent != null) {
+                if (selected.contains(parent)) {
+                    // in this case, a parent is already on the list, so
+                    // skip this entry
+                    add = false;
+                    break; // out of the while loop
+                }
+
+                parent = parent.getParent();
+            }
+
+            if (add) {
+                out.add(cell);
+            }
+        }
+
+        return out;
     }
 
     private void checkMovableComponent(final Cell cell) {

@@ -54,7 +54,7 @@ public enum EZMoveManager {
     private boolean moveMode = false;
     private Vector3f lastTranslation;
     private Quaternion lastRotation;
-    private List<Cell> selectedCells;
+    private boolean dragging = false;
 
     public static EZMoveManager getInstance() {
         return INSTANCE;
@@ -129,15 +129,16 @@ public enum EZMoveManager {
     }
 
     protected void startDrag() {
-        selectedCells = new ArrayList<Cell>();
-        
-        for(Cell cell: selected.getSelectedCells()) {
-            MovableComponent mc = getMovable(cell);
-            if(mc != null) {
-                selectedCells.add(cell);
-            }
-        }
+//        selectedCells = new ArrayList<Cell>();
+//
+//        for(Cell cell: selected.getSelectedCells()) {
+//            MovableComponent mc = getMovable(cell);
+//            if(mc != null) {
+//                selectedCells.add(cell);
+//            }
+//        }
         //TODO: if a parent and children are both in the list, remove any children.
+        dragging = true;
 
         lastTranslation = new Vector3f(Vector3f.ZERO);
         lastRotation = new Quaternion();
@@ -205,14 +206,14 @@ public enum EZMoveManager {
         LOGGER.warning("Applying delta: "+deltaTranslation + " " + deltaRotation);
 
         boolean startedDrag = false;
-        if (selectedCells == null) {
+        if (!dragging) {
             // no drag in progress. Start one now and end it after the drag
             // operation
             startDrag();
             startedDrag = true;
         }
 
-        for(Cell cell: selectedCells) {
+        for(Cell cell : selected.getSelectedCells()) {
             CellTransform transform = cell.getLocalTransform();
             Vector3f translate = transform.getTranslation(null);
             Quaternion rotation = transform.getRotation(null);
@@ -240,7 +241,11 @@ public enum EZMoveManager {
             rotation.multLocal(deltaRotation);
             transform.setTranslation(translate);
             transform.setRotation(rotation);
-            getMovable(cell).localMoveRequest(transform);
+            
+            MovableComponent mc = getMovable(cell);
+            if (mc != null) {
+                mc.localMoveRequest(transform);
+            }
 
         }
         lastTranslation.addLocal(deltaTranslation);
@@ -255,7 +260,7 @@ public enum EZMoveManager {
         LOGGER.warning("Drag ended");
         lastTranslation = null;
         lastRotation = null;
-        selectedCells = null;
+        dragging = false;
     }
     class EZMoveMoveListener extends EventClassListener {
         private Point startDragMouse;
