@@ -45,7 +45,8 @@
 
     <target name="build" depends="-module-init, -module-compile-common,
             -module-compile-server,
-            -module-compile-client"/>
+            -module-compile-client,
+            -copy-resources"/>
 
     <target name="dist" depends="build">
         <mkdir dir="${module.dist.dir}"/>
@@ -55,9 +56,9 @@
                 <clientjar name="${module.name}-client" basedir="${build.classes.dir}">
                     <include name="${module.src}/client/**"/>
                     <include name="${module.src}/common/**"/>
-                    <fileset dir="${current.dir}/src/classes">
+<!--                    <fileset dir="${current.dir}/src/classes">
                         <include name="${module.src}/client/resources/**"/>
-                    </fileset>
+                    </fileset>-->
                 </clientjar>
             </client>
 
@@ -79,6 +80,10 @@
         <javac srcdir="${test.classes}" destdir="${test.compiled.classes}" debug="true">
             <classpath refid="test.classpath"/>
         </javac>
+        
+    </target>
+
+    <target name="-copy-resources">
         <mkdir dir="build/classes/org/jdesktop/wonderland/modules/ezmove/client/resources"/>
         <copy todir="build/classes/org/jdesktop/wonderland/modules/ezmove/client/resources">
             <fileset dir="src/classes/org/jdesktop/wonderland/modules/ezmove/client/resources/" />
